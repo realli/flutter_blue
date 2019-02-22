@@ -9,6 +9,26 @@ class BluetoothDevice {
   final String name;
   final BluetoothDeviceType type;
 
+  Map<String, Completer> completerMaps = Map();
+
+  Future<T> _convertStreamToFuture<T>(Stream<T> stream, String key) {
+    Completer<T> completer = Completer<T>();
+    StreamSubscription sub;
+    sub = stream.listen((data) {
+      completer.complete(data);
+      sub.cancel();
+    }, onError: (err) {
+      completer.completeError(err);
+    }, cancelOnError: true);
+
+    completerMaps[key] = completer;
+
+    return completer.future.catchError((err) {
+      sub.cancel();
+      throw err;
+    });
+  }
+
   BluetoothDevice(
       {@required this.id, this.name, this.type = BluetoothDeviceType.unknown});
 
@@ -19,18 +39,21 @@ class BluetoothDevice {
 
   /// Discovers services offered by the remote device as well as their characteristics and descriptors
   Future<List<BluetoothService>> discoverServices() async {
-    var response = FlutterBlue.instance._servicesDiscoveredChannel
-        .receiveBroadcastStream()
-        .map((buffer) => new protos.DiscoverServicesResult.fromBuffer(buffer))
-        .where((p) => p.remoteId == id.toString())
-        .map((p) => p.services)
-        .map((s) => s.map((p) => new BluetoothService.fromProto(p)).toList())
-        .first;
+    Future<List<BluetoothService>> fut = _convertStreamToFuture(
+        FlutterBlue.instance._servicesDiscoveredChannel
+            .receiveBroadcastStream()
+            .map((buffer) =>
+                new protos.DiscoverServicesResult.fromBuffer(buffer))
+            .where((p) => p.remoteId == id.toString())
+            .map((p) => p.services)
+            .map((s) =>
+                s.map((p) => new BluetoothService.fromProto(p)).toList()),
+        "discoverServices");
 
     await FlutterBlue.instance._channel
         .invokeMethod('discoverServices', id.toString());
 
-    return response;
+    return fut;
   }
 
   /// Returns a list of Bluetooth GATT services offered by the remote device
@@ -56,17 +79,17 @@ class BluetoothDevice {
     await FlutterBlue.instance._channel
         .invokeMethod('readCharacteristic', request.writeToBuffer());
 
-    return await FlutterBlue.instance._characteristicReadChannel
-        .receiveBroadcastStream()
-        .map((buffer) =>
-            new protos.ReadCharacteristicResponse.fromBuffer(buffer))
-        .where((p) =>
-            (p.remoteId == request.remoteId) &&
-            (p.characteristic.uuid == request.characteristicUuid) &&
-            (p.characteristic.serviceUuid == request.serviceUuid))
-        .map((p) => p.characteristic.value)
-        .first
-        .then((d) => characteristic.value = d);
+    return _convertStreamToFuture(
+        FlutterBlue.instance._characteristicReadChannel
+            .receiveBroadcastStream()
+            .map((buffer) =>
+                new protos.ReadCharacteristicResponse.fromBuffer(buffer))
+            .where((p) =>
+                (p.remoteId == request.remoteId) &&
+                (p.characteristic.uuid == request.characteristicUuid) &&
+                (p.characteristic.serviceUuid == request.serviceUuid))
+            .map((p) => p.characteristic.value),
+        "readCharacteristic");
   }
 
   /// Retrieves the value of a specified descriptor
@@ -80,17 +103,21 @@ class BluetoothDevice {
     await FlutterBlue.instance._channel
         .invokeMethod('readDescriptor', request.writeToBuffer());
 
-    return await FlutterBlue.instance._descriptorReadChannel
-        .receiveBroadcastStream()
-        .map((buffer) => new protos.ReadDescriptorResponse.fromBuffer(buffer))
-        .where((p) =>
-            (p.request.remoteId == request.remoteId) &&
-            (p.request.descriptorUuid == request.descriptorUuid) &&
-            (p.request.characteristicUuid == request.characteristicUuid) &&
-            (p.request.serviceUuid == request.serviceUuid))
-        .map((d) => d.value)
-        .first
-        .then((d) => descriptor.value = d);
+    return _convertStreamToFuture(
+        FlutterBlue.instance._descriptorReadChannel
+            .receiveBroadcastStream()
+            .map((buffer) =>
+                new protos.ReadDescriptorResponse.fromBuffer(buffer))
+            .where((p) =>
+                (p.request.remoteId == request.remoteId) &&
+                (p.request.descriptorUuid == request.descriptorUuid) &&
+                (p.request.characteristicUuid == request.characteristicUuid) &&
+                (p.request.serviceUuid == request.serviceUuid))
+            .map((d) {
+          descriptor.value = d.value;
+          return d.value;
+        }),
+        "readDescriptor");
   }
 
   /// Writes the value of a characteristic.
@@ -117,16 +144,19 @@ class BluetoothDevice {
       return result;
     }
 
-    return await FlutterBlue.instance._methodStream
-        .where((m) => m.method == "WriteCharacteristicResponse")
-        .map((m) => m.arguments)
-        .map((buffer) =>
-            new protos.WriteCharacteristicResponse.fromBuffer(buffer))
-        .where((p) =>
-            (p.request.remoteId == request.remoteId) &&
-            (p.request.characteristicUuid == request.characteristicUuid) &&
-            (p.request.serviceUuid == request.serviceUuid))
-        .first
+    var fut = _convertStreamToFuture(
+        FlutterBlue.instance._methodStream
+            .where((m) => m.method == "WriteCharacteristicResponse")
+            .map((m) => m.arguments)
+            .map((buffer) =>
+                new protos.WriteCharacteristicResponse.fromBuffer(buffer))
+            .where((p) =>
+                (p.request.remoteId == request.remoteId) &&
+                (p.request.characteristicUuid == request.characteristicUuid) &&
+                (p.request.serviceUuid == request.serviceUuid)),
+        "writeCharacteristic");
+
+    return fut
         .then((w) => w.success)
         .then((success) => (!success)
             ? throw new Exception('Failed to write the characteristic')
@@ -148,16 +178,20 @@ class BluetoothDevice {
     await FlutterBlue.instance._channel
         .invokeMethod('writeDescriptor', request.writeToBuffer());
 
-    return await FlutterBlue.instance._methodStream
-        .where((m) => m.method == "WriteDescriptorResponse")
-        .map((m) => m.arguments)
-        .map((buffer) => new protos.WriteDescriptorResponse.fromBuffer(buffer))
-        .where((p) =>
-            (p.request.remoteId == request.remoteId) &&
-            (p.request.descriptorUuid == request.descriptorUuid) &&
-            (p.request.characteristicUuid == request.characteristicUuid) &&
-            (p.request.serviceUuid == request.serviceUuid))
-        .first
+    var fut = _convertStreamToFuture(
+        FlutterBlue.instance._methodStream
+            .where((m) => m.method == "WriteDescriptorResponse")
+            .map((m) => m.arguments)
+            .map((buffer) =>
+                new protos.WriteDescriptorResponse.fromBuffer(buffer))
+            .where((p) =>
+                (p.request.remoteId == request.remoteId) &&
+                (p.request.descriptorUuid == request.descriptorUuid) &&
+                (p.request.characteristicUuid == request.characteristicUuid) &&
+                (p.request.serviceUuid == request.serviceUuid)),
+        "writeDescriptor");
+
+    return fut
         .then((w) => w.success)
         .then((success) => (!success)
             ? throw new Exception('Failed to write the descriptor')
@@ -178,15 +212,18 @@ class BluetoothDevice {
     await FlutterBlue.instance._channel
         .invokeMethod('setNotification', request.writeToBuffer());
 
-    return await FlutterBlue.instance._methodStream
-        .where((m) => m.method == "SetNotificationResponse")
-        .map((m) => m.arguments)
-        .map((buffer) => new protos.SetNotificationResponse.fromBuffer(buffer))
-        .where((p) =>
-            (p.remoteId == request.remoteId) &&
-            (p.characteristic.uuid == request.characteristicUuid) &&
-            (p.characteristic.serviceUuid == request.serviceUuid))
-        .first
+    var fut = _convertStreamToFuture(
+        FlutterBlue.instance._methodStream
+            .where((m) => m.method == "SetNotificationResponse")
+            .map((m) => m.arguments)
+            .map((buffer) =>
+                new protos.SetNotificationResponse.fromBuffer(buffer))
+            .where((p) =>
+                (p.remoteId == request.remoteId) &&
+                (p.characteristic.uuid == request.characteristicUuid) &&
+                (p.characteristic.serviceUuid == request.serviceUuid)),
+        "setNotifyValue");
+    return fut
         .then((p) => new BluetoothCharacteristic.fromProto(p.characteristic))
         .then((c) {
       characteristic.updateDescriptors(c.descriptors);
@@ -231,6 +268,15 @@ class BluetoothDevice {
   /// Indicates whether the Bluetooth Device can send a write without response
   Future<bool> get canSendWriteWithoutResponse =>
       new Future.error(new UnimplementedError());
+
+  void cancelPendingEstablish() {
+    for (var kv in completerMaps.entries) {
+      if (kv.value != null && !kv.value.isCompleted) {
+        print("Canceling Operation ${kv.key}");
+        kv.value.completeError("Device Reset");
+      }
+    }
+  }
 }
 
 enum BluetoothDeviceType { unknown, classic, le, dual }
