@@ -156,6 +156,11 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
                 result.success(mBluetoothAdapter.isEnabled());
                 break;
             }
+            case "enableBluetooth":
+            {
+                result.success(mBluetoothAdapter.enable());
+                break;
+            }
 
             case "startScan":
             {
