@@ -42,7 +42,7 @@ class FlutterBlue {
 
   /// Checks if Bluetooth functionality is turned on
   Future<bool> get isOn => _channel.invokeMethod('isOn').then<bool>((d) => d);
-  Future<bool> enableBluetooth => _channel.invokeMethod("enableBluetooth").then<bool>((d) => d);
+  Future<bool> enableBluetooth() => _channel.invokeMethod("enableBluetooth").then<bool>((d) => d);
 
   /// Gets the current state of the Bluetooth module
   Future<BluetoothState> get state {
