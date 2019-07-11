@@ -2,10 +2,10 @@
 // All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-part of flutter_blue;
+part of bluetooth;
 
 class BluetoothService {
-  final Guid uuid;
+  final Uuid uuid;
   final DeviceIdentifier deviceId;
   final bool isPrimary;
   final List<BluetoothCharacteristic> characteristics;
@@ -19,7 +19,7 @@ class BluetoothService {
       @required this.includedServices});
 
   BluetoothService.fromProto(protos.BluetoothService p)
-      : uuid = new Guid(p.uuid),
+      : uuid = Uuid.fromString(p.uuid),
         deviceId = new DeviceIdentifier(p.remoteId),
         isPrimary = p.isPrimary,
         characteristics = p.characteristics

@@ -2,7 +2,7 @@
 // All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
-part of flutter_blue;
+part of bluetooth;
 
 class FlutterBlue {
   final MethodChannel _channel = const MethodChannel('$NAMESPACE/methods');
@@ -22,7 +22,7 @@ class FlutterBlue {
 
   /// Singleton boilerplate
   FlutterBlue._() {
-    _channel.setMethodCallHandler((MethodCall call) {
+    _channel.setMethodCallHandler((MethodCall call) async {
       _methodStreamController.add(call);
     });
 
@@ -64,8 +64,8 @@ class FlutterBlue {
   /// Timeout closes the stream after a specified [Duration]
   Stream<ScanResult> scan({
     ScanMode scanMode = ScanMode.lowLatency,
-    List<Guid> withServices = const [],
-    List<Guid> withDevices = const [],
+    List<Uuid> withServices = const [],
+    List<Uuid> withDevices = const [],
     Duration timeout,
   }) async* {
     var settings = protos.ScanSettings.create()
