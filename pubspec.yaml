@@ -1,4 +1,4 @@
-name: bluetooth
+name: flutter_blue
 description: Bluetooth plugin for Flutter
 version: 0.1.0
 authors:
